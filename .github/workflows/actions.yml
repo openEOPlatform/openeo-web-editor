@@ -2,12 +2,7 @@ name: Web Editor Deployment
 on:
   push:
     branches:
-      - deploy
-  release:
-    types: 
-      - published
-      - created
-      - edited
+      - master
 jobs:
   deploy:
     runs-on: ubuntu-latest
