@@ -41,6 +41,7 @@ export default {
 				title: {
 					name: 'Batch Job',
 					computedValue: row => Utils.getResourceTitle(row),
+					format: value => Utils.formatIdOrTitle(value),
 					edit: this.updateTitle
 				},
 				status: {
@@ -131,22 +132,21 @@ export default {
 				let result = await this.connection.computeResult(this.process, null, null, abortController);
 				this.emit('viewSyncResult', result);
 			} catch(error) {
-				let title = "Processing Error";
 				if (axios.isCancel(error)) {
 					// Do nothing, we expected the cancellation
 				}
-				else if (typeof error.message === 'string' && error.message.length > this.$config.snotifyDefaults.bodyMaxLength) {
+				else if (typeof error.message === 'string' && Utils.isObject(error.response) && [400,500].includes(error.response.status)) {
 					this.emit('viewLogs', [{
-						id: error.id || "unknown",
-						code: error.code || undefined,
+						id: error.id,
+						code: error.code,
 						level: 'error',
 						message: error.message,
 						links: error.links || []
 					}]);
-					Utils.error(this, "Synchronous processing failed. Please see the logs for details.", title);
+					Utils.error(this, "Synchronous processing failed. Please see the logs for details.", "Processing Error");
 				}
 				else {
-					Utils.exception(this, error, title);
+					Utils.exception(this, error, "Server Error");
 				}
 			} finally {
 				if (toast) {
@@ -241,6 +241,9 @@ export default {
 			this.emit('showDataForm', "Create new batch job", fields, data => this.createJob(this.process, data));
 		},
 		deleteJob(job) {
+			if (!confirm(`Do you really want to delete the batch job "${Utils.getResourceTitle(job)}"?`)) {
+				return;
+			}
 			this.delete({data: job})
 				.catch(error => Utils.exception(this, error, 'Delete Job Error: ' + Utils.getResourceTitle(job)));
 		},
@@ -331,6 +334,9 @@ export default {
 			}
 		},
 		async cancelJob(job) {
+			if (!confirm(`Do you really want to cancel the execution of batch job "${file.path}"?`)) {
+				return;
+			}
 			try {
 				let updatedJob = await this.cancel({data: job});
 				Utils.ok(this, 'Job "' + Utils.getResourceTitle(updatedJob) + '" successfully canceled.');
@@ -386,11 +392,17 @@ export default {
 }
 </script>
 
-<style>
-.JobPanel .title {
-	width: 25%;
-}
-.JobPanel .consumed_credits, .JobPanel .updated, .JobPanel .created {
-	text-align: right;
+<style lang="scss">
+.JobPanel {
+	.title {
+		width: 25%;
+
+		.id {
+			color: #777;
+		}
+	}
+	.consumed_credits, .updated, .created {
+		text-align: right;
+	}
 }
 </style>
