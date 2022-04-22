@@ -31,6 +31,7 @@ export default {
 		ConnectForm,
 		IDE: () => import('./components/IDE.vue'),
 		CollectionModal: () => import('./components/modals/CollectionModal.vue'),
+		DataModal: () => import('./components/modals/DataModal.vue'),
 		DownloadAssetsModal: () => import('./components/modals/DownloadAssetsModal.vue'),
 		ErrorModal: () => import('./components/modals/ErrorModal.vue'),
 		ExportCodeModal: () => import('./components/modals/ExportCodeModal.vue'),
@@ -58,6 +59,7 @@ export default {
 		};
 	},
 	created() {
+		this.initUserLocation();
 		this.addProcessNamespacesToRequest(Utils.param('namespaces'));
 		this.setInitialProcess(Utils.param('process'));
 		this.setInitialNode(Utils.param('edit-node'));
@@ -84,6 +86,7 @@ export default {
 	},
 	mounted() {
 		this.listen('showError', this.showError);
+		this.listen('showDataModal', this.showData);
 		this.listen('showModal', this.showModal);
 		this.listen('showListModal', this.showListModal);
 		this.listen('showCollection', this.showCollection);
@@ -111,7 +114,7 @@ export default {
 		...Utils.mapState('editor', ['hightestModalZIndex']),
 	},
 	methods: {
-		...Utils.mapActions(['describeAccount', 'describeCollection', 'loadProcess']),
+		...Utils.mapActions(['describeAccount', 'describeCollection', 'loadProcess', 'initUserLocation']),
 		...Utils.mapMutations(['startActiveRequest', 'endActiveRequest', 'addProcessNamespacesToRequest']),
 		...Utils.mapMutations('editor', ['setInitialProcess', 'setInitialNode', 'setCollectionPreview']),
 		setTitle(subtitle) {
@@ -164,11 +167,11 @@ export default {
 				process: await this.loadProcess(process)
 			});
 		},
+		async showData(data, title) {
+			this.showModal('DataModal', {data, title});
+		},
 		showProcessParameter(parameter, udp = true) {
-			this.showModal('ProcessParameterModal', {
-				parameter,
-				udp
-			});
+			this.showModal('ProcessParameterModal', {parameter,udp});
 		}
 	}
 }
@@ -367,5 +370,26 @@ h3.aboutPage {
 }
 .connect-fade-enter, .connect-fade-leave-to {
   opacity: 0;
+}
+
+/* General editor styling */
+.sourceHeader {
+	padding: 5px;
+	border-bottom: 1px solid #ddd;
+	display: flex;
+	justify-content: flex-end;
+	background-color: #fff;
+
+	strong {
+		display: block;
+		margin: auto 0;
+		flex-grow: 1;
+	}
+}
+.sourceToolbar {
+	text-align: right;
+}
+.tabContent > .textEditor {
+	border: 0 !important;
 }
 </style>
