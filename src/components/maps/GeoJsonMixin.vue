@@ -15,7 +15,7 @@ export default {
 		EventBusMixin
 	],
 	methods: {
-		addGeoJson(geojson, selectable = false, title = "GeoJSON") {
+		addGeoJson(geojson, selectable = false, title = "GeoJSON", fill = true) {
 			let source;
 			if (geojson instanceof VectorSource) {
 				source = geojson;
@@ -25,6 +25,9 @@ export default {
 			}
 
 			let layer = new VectorLayer({title, source});
+			if(!fill && this.removeLayerFill) {
+				this.removeLayerFill(layer);
+			}
 			this.map.addLayer(layer);
 			let extent = source.getExtent();
 			if (!extentIsEmpty(extent)) {
@@ -54,7 +57,7 @@ export default {
 				this.emit('showDataModal', props, title);
 			}
 		},
-		createGeoJsonSource(geojson, projection = undefined) {
+		createGeoJsonSource(geojson, projection) {
 			let features = [];
 			if (Utils.detectGeoJson(geojson)) {
 				features = (new GeoJSON()).readFeatures(geojson, { featureProjection: projection })
