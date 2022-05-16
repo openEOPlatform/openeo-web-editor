@@ -16,7 +16,7 @@
 			<i class="fas fa-info-circle"></i>
 			<Description :description="selectedSchema.description()" :compact="true" />
 		</div>
-		<ParameterDataType :editable="editable" :parameter="parameter" :schema="selectedSchema" v-model="state" :context="context" @changeType="setSelected" :parent="parent" />
+		<ParameterDataType :editable="editable" :parameter="parameter" :schema="selectedSchema" v-model="state" :context="context" @changeType="setSelected" @reset="resetValue" :parent="parent" />
 	</div>
 </template>
 
@@ -49,7 +49,7 @@ const cloneDefault = value => {
 const now = () => new Date().toISOString().replace(/\.\d+/, '');
 const SUPPORTED_TYPES = [
 		// Native types
-		{subtype: 'undefined', title: 'No Value', const: undefined, group: 'Basics'},
+		{subtype: 'undefined', title: 'No Value', const: undefined, not: {}, group: 'Basics'},
 		{type: 'null', const: null, group: 'Basics'},
 		{type: 'string', default: "", group: 'Basics'},
 		{type: 'integer', default: 0, group: 'Basics'},
@@ -140,7 +140,7 @@ export default {
 	},
 	data() {
 		return {
-			state: typeof this.value === 'undefined' ? cloneDefault(this.parameter.default) : this.value,
+			state: undefined,
 			selectedType: null,
 			selectedNativeType: null,
 			selectedSchema: null,
@@ -265,9 +265,17 @@ export default {
 		}
 	},
 	watch: {
-		value(value) {
-			if (value !== this.state) {
-				this.state = value;
+		value: {
+			immediate: true,
+			handler(value) {
+				if (value !== this.state) {
+					if (typeof value === 'undefined' && !this.allowedTypes.undefined) {
+						this.state = cloneDefault(this.parameter.default);
+					}
+					else {
+						this.state = value;
+					}
+				}
 			}
 		},
 		state: {
@@ -324,8 +332,13 @@ export default {
 				await this.setSelected(keys[0], valueUndefined);
 			}
 			else if (valueUndefined) {
-				let nonNullKeys = keys.filter(t => t !== 'null');
-				await this.setSelected(nonNullKeys[0], true);
+				if (this.allowedTypes.undefined) {
+					await this.setSelected(this.allowedTypes.undefined, false);
+				}
+				else {
+					let nonNullKeys = keys.filter(t => t !== 'null');
+					await this.setSelected(nonNullKeys[0], true);
+				}
 			}
 			else {
 				let detectableTypes = Object.values(this.allowedTypes).filter(type => !type.schema.noAutoDetect);
@@ -359,6 +372,10 @@ export default {
 		},
 		async onSelectType(evt) {
 			await this.setSelected(evt.target.value, true);
+		},
+		resetValue() {
+			this.state = cloneDefault(this.parameter.default);
+			this.detectType();
 		},
 		async setSelected(type, setValue = false) {
 			let nativeType = type;
