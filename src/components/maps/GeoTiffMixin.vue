@@ -15,25 +15,12 @@ export default {
 	data() {
 		return {
 			textControlText: 'Pixel Value: -',
-			hasStyle: false,
 			layer: null,
 			source: null,
 			colorMap: null,
 			noData: [],
 			channels: [],
 			bands: []
-		}
-	},
-	computed: {
-		glStyleVars() {
-			let vars = {};
-			for(let i in this.channels) {
-				let channel = this.channels[i];
-				vars[`${i}band`] = channel.id;
-				vars[`${i}min`] = channel.min;
-				vars[`${i}max`] = channel.max;
-			}
-			return vars;
 		}
 	},
 	methods: {
@@ -48,7 +35,7 @@ export default {
 			return ['clamp', scale, 0, 255]; // clamp values in case we get cales < 0 or > 255
 		},
 		getNoDataFormula() {
-			let band = ['band', this.bands.length + 1];
+			let band = this.getBandVar('alpha');
 			// https://github.com/openlayers/openlayers/issues/13588#issuecomment-1125317573
 			// return ['clamp', band, 0, 1];
 			// return ['/', band, 255];
@@ -82,7 +69,7 @@ export default {
 					let pixelData = this.layer.getData(evt.pixel);
 					let value = Utils.displayRGBA(pixelData, this.noData, this.noData.length > 0);
 					let valueText = `Pixel Value: ${value}`;
-					this.textControlText = [valueText, `${valueText} @ ${evt.coordinate.map(x => String(x.toFixed(6)).replace(/0+$/, '')).join(', ')}`];
+					this.textControlText = [valueText, `${valueText} @ ${evt.coordinate.map(x => String(parseFloat(x.toFixed(6)))).join(', ')}`];
 				}
 			});
 			this.addLayerToMap(this.layer);
@@ -98,58 +85,61 @@ export default {
 
 			return this.source;
 		},
-
 		updateGeoTiffStyle(type, data) {
 			switch(type) {
-				case 'channels': 
+				case 'channels':
 					this.channels = data;
 					break;
 			}
 			this.setStyle();
 		},
-
 		setStyle() {
 			if (!this.layer) {
 				return;
 			}
-			if (!this.hasStyle) {
-				// Create style
-				let color = [];
-				if (this.colorMap) {
-					color.push('palette');
-					color.push(['band', 1]);
-					color.push(this.colorMap);
+
+			// Compute variables
+			let variables = {};
+			for(let i in this.channels) {
+				let channel = this.channels[i];
+				variables[`${i}band`] = channel.id;
+				variables[`${i}min`] = channel.min;
+				variables[`${i}max`] = channel.max;
+			}
+			variables.alphaband = this.bands.length + 1;
+
+			// Create style
+			let color = [];
+			if (this.colorMap) {
+				color.push('palette');
+				color.push(['band', 1]);
+				color.push(this.colorMap);
+			}
+			else if (this.channels.length === 0) {
+				return null;
+			}
+			else if (this.channels.length === 1) {
+				color.push('color');
+				let formula = this.getFormula(0);
+				color.push(formula);
+				color.push(formula);
+				color.push(formula);
+				if (this.noData.length > 0) {
+					color.push(this.getNoDataFormula());
 				}
-				else if (this.channels.length === 0) {
-					return null;
-				}
-				else if (this.channels.length === 1) {
-					color.push('color');
-					let formula = this.getFormula(0);
-					color.push(formula);
-					color.push(formula);
-					color.push(formula);
-					if (this.noData.length > 0) {
-						color.push(this.getNoDataFormula());
-					}
-				}
-				else {
-					color.push('color');
-					color.push(this.getFormula(0));
-					color.push(this.getFormula(1));
-					color.push(this.getFormula(2));
-					if (this.noData.length > 0) {
-						color.push(this.getNoDataFormula());
-					}
-				}
-				let style = {variables: this.glStyleVars, color};
-				// Set style
-				this.layer.setStyle(style);
-				this.hasStyle = true;
 			}
 			else {
-				this.layer.updateStyleVariables(this.glStyleVars);
+				color.push('color');
+				color.push(this.getFormula(0));
+				color.push(this.getFormula(1));
+				color.push(this.getFormula(2));
+				if (this.noData.length > 0) {
+					color.push(this.getNoDataFormula());
+				}
 			}
+
+			// Set style
+			this.layer.setStyle({variables, color});
 		}
 	}
 }

@@ -3,9 +3,9 @@
 		<Tabs id="viewerTabs" ref="tabs" @empty="onTabsEmpty">
 			<template #empty>Nothing to show right now...</template>
 			<template #dynamic="{ tab }">
-				<LogViewer v-if="logViewerIcons.includes(tab.icon)" :data="tab.data" />
-				<MapViewer v-else-if="tab.icon === 'fa-map'" :data="tab.data" :removableLayers="isCollectionPreview(tab.data)" @show="onShow" @hide="onHide" /> <!-- for services -->
-				<component v-else-if="tab.data.component" :is="tab.data.component" v-on="tab.data.events" v-bind="tab.data.props" @show="onShow" @hide="onHide" /> <!-- for file formats -->
+				<LogViewer v-if="logViewerIcons.includes(tab.icon)" :data="tab.data" @mounted="onMounted" />
+				<MapViewer v-else-if="tab.icon === 'fa-map'" :data="tab.data" :removableLayers="isCollectionPreview(tab.data)" @mounted="onMounted" /> <!-- for services -->
+				<component v-else-if="tab.data.component" :is="tab.data.component" v-on="tab.data.events" v-bind="tab.data.props" @mounted="onMounted" /> <!-- for file formats -->
 				<div class="unsupported" v-else>
 					Sorry, the viewer doesn't support showing this type of data.
 					<template v-if="isFormat(tab.data)">
@@ -41,7 +41,7 @@ export default {
 		this.listen('viewSyncResult', this.showSyncResults);
 		this.listen('viewJobResults', this.showJobResults);
 		this.listen('viewWebService', this.showWebService);
-		this.listen('showCollectionPreview', this.showCollectionPreview);
+		this.listen('showCollectionPreview', collection => this.showCollectionPreview(collection).catch(error => Utils.exception(this, error, 'Failed loading collection.')));
 		this.listen('viewLogs', this.showLogs);
 		this.listen('removeWebService', this.closeTabWithLogs);
 		this.listen('removeBatchJob', this.closeTabWithLogs);
@@ -147,17 +147,20 @@ export default {
 			// Download files to disc so that nothing gets lost
 			files.forEach(file => file.download());
 			// Show the data in the viewer
-			this.showViewer(files, title).finally(() => {
-				// Open the log files after the data tab has been opened -> it's in finally to spawn after the data tab
-				if (Array.isArray(result.logs) && result.logs.length > 0) {
-					this.showLogs(result.logs, title, false);
-				}
-			});
+			this.showViewer(files, title)
+				.catch(error => Utils.exception(this, error))
+				.finally(() => {
+					// Open the log files after the data tab has been opened -> it's in finally to spawn after the data tab
+					if (Array.isArray(result.logs) && result.logs.length > 0) {
+						this.showLogs(result.logs, title, false);
+					}
+				});
 		},
 		showJobResults(stac, job) {
 			let files = this.registry.createFilesFromSTAC(stac, job);
 			let title = Utils.getResourceTitle(job, true);
-			this.showViewer(files, title, job.id, true);
+			this.showViewer(files, title, job.id, true)
+				.catch(error => Utils.exception(this, error));
 		},
 		showMapViewer(resource, id = null, title = null, reUseExistingTab = false) {
 			if (!title) {
@@ -183,6 +186,9 @@ export default {
 			);
 		},
 		async showViewer(files, title = null, id = null, reUseExistingTab = false) {
+			if (!Array.isArray(files)) {
+				return;
+			}
 			for(let file of files) {
 				try {
 					let context = file.getContext();
@@ -207,7 +213,7 @@ export default {
 					else if (!title) {
 						title = this.makeTitle("Untitled");
 					}
-					await file.getData(this.connection);
+					await file.loadData(this.connection);
 					this.$refs.tabs.addTab(
 						title, file.icon, file, id, true, true,
 						tab => this.onShow(tab),
@@ -218,21 +224,13 @@ export default {
 				}
 			}
 		},
-		async callChildFunction(tab, fn, ...args) {
-			let result;
-			if (tab.$children.length === 1 && typeof tab.$children[0][fn] === 'function') {
-				result = tab.$children[0][fn](...args);
+		callChildFunction(component, fn, ...args) {
+			if (typeof component[fn] === 'function') {
+				let result = component[fn](...args);
+				if (result instanceof Promise) {
+					result.catch(error => Utils.exception(this, error));
+				}
 			}
-			else if (typeof tab[fn] === 'function') {
-				result = tab[fn](...args);
-			}
-			else {
-				return Promise.reject();
-			}
-			if (result instanceof Promise) {
-				result = await result;
-			}
-			return result;
 		},
 		async onDrop(event) {
 			var json = event.dataTransfer.getData("application/vnd.openeo-node");
@@ -244,10 +242,9 @@ export default {
 				event.preventDefault();
 				let id = Utils.isObject(node.arguments) ? node.arguments.id : null;
 				try {
-					let collection = await this.describeCollection(id);
-					this.showCollectionPreview(collection);
+					await this.showCollectionPreview(id);
 				} catch (error) {
-					Utils.error(this, "Sorry, can't load collection details for '" + id + "'.");
+					Utils.exception(this, error, `Failed loading collection '${id}'.`)
 				}
 			}
 		},
@@ -256,6 +253,9 @@ export default {
 		},
 		onShow(tab) {
 			this.callChildFunction(tab, 'onShow');
+		},
+		onMounted(component) {
+			this.callChildFunction(component, 'onShow');
 		},
 		onHide(tab) {
 			this.callChildFunction(tab, 'onHide');

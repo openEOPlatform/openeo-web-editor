@@ -34,14 +34,17 @@ export default {
 			value: '-'
 		};
 	},
-	async created() {
-		this.img = await this.data.getData();
+	created() {
+		this.img = this.data.getData();
 		if (this.img.complete) {
 			this.imageLoaded();
 		}
 		else {
 			this.img.onload = this.imageLoaded.bind(this);
 		}
+	},
+	mounted() {
+		this.$emit('mounted', this);
 	},
 	computed: {
 		title() {

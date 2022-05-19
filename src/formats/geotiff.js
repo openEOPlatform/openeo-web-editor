@@ -34,8 +34,15 @@ class GeoTIFF extends SupportedFormat {
 		return true;
 	}
 
-	async getData() {
-		await this.parseMetadata();
+	async loadData(connection) {
+		if (!this.loaded) {
+			await this.parseMetadata();
+			this.loaded = true;
+		}
+		return this;
+	}
+
+	getData() {
 		return this;
 	}
 
@@ -58,6 +65,13 @@ class GeoTIFF extends SupportedFormat {
 		// Get min/max/nodata from STAC raster:bands
 		if (Array.isArray(this['raster:bands']) && this['raster:bands'].length > 0) {
 			this['raster:bands'].forEach((band, i) => {
+				// Get name from band
+				if (band.name) {
+					this.setBandInfo(i, {
+						name: band.name
+					});
+				}
+
 				// Set min/max from statistics
 				if (Utils.isObject(band.statistics)) {
 					this.setBandInfo(i, {
@@ -79,31 +93,34 @@ class GeoTIFF extends SupportedFormat {
 
 		// Get data for each band / sample
 		for (let i = 0; i < this.img.getSamplesPerPixel(); i++) {
-			// Set min/max/name from statistics
-			let band = this.img.getGDALMetadata(i);
-
 			let data = {};
-			if (GDAL_MIN in band) {
-				data.min = parseFloat(band[GDAL_MIN]);
-			}
-			if (GDAL_MAX in band) {
-				data.max = parseFloat(band[GDAL_MAX]);
-			}
-			if (GDAL_NAME in band) {
-				data.name = band[GDAL_NAME];
-			}
-			this.setBandInfo(i, data);
 
-			// Use min/max for data type
+			// Use min/max for data type (as fallback)
 			try {
 				let dummy = this.img.getArrayForSample(i);
 				if (!Number.isFinite(this.bands[i].min)) {
-					this.bands[i].min = this.getMinForDataType(dummy);
+					data.min = this.getMinForDataType(dummy);
 				}
 				if (!Number.isFinite(this.bands[i].max)) {
-					this.bands[i].max = this.getMaxForDataType(dummy);
+					data.max = this.getMaxForDataType(dummy);
 				}
 			} catch (error) {}
+
+			// Set min/max/name from statistics, if available
+			let band = this.img.getGDALMetadata(i);
+			if (Utils.isObject(band)) {
+				if (GDAL_MIN in band) {
+					data.min = parseFloat(band[GDAL_MIN]);
+				}
+				if (GDAL_MAX in band) {
+					data.max = parseFloat(band[GDAL_MAX]);
+				}
+				if (GDAL_NAME in band) {
+					data.name = band[GDAL_NAME];
+				}
+			}
+
+			this.setBandInfo(i, data);
 
 			// get no-data values if needed
 			let nodata = this.img.getGDALNoData();

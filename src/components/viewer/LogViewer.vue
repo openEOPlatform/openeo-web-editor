@@ -51,6 +51,9 @@ export default {
 			this.listen('jobStatusUpdated', this.onJobStatusUpdated);
 		}
 	},
+	mounted() {
+		this.$emit('mounted', this);
+	},
 	beforeDestroy() {
 		this.onHide();
 	},
@@ -91,17 +94,21 @@ export default {
 			}
 		},
 		async loadNext() {
-			if (this.logIterator) {
-				let logs = await this.logIterator.nextLogs();
-				if (!Array.isArray(this.logs)) {
-					this.logs = [];
+			try {
+				if (this.logIterator) {
+					let logs = await this.logIterator.nextLogs();
+					if (!Array.isArray(this.logs)) {
+						this.logs = [];
+					}
+					for(let log of logs) {
+						this.logs.push(log);
+					}
 				}
-				for(let log of logs) {
-					this.logs.push(log);
+				else if(Array.isArray(this.data) && !this.logs) {
+					this.logs = this.data;
 				}
-			}
-			else if(Array.isArray(this.data) && !this.logs) {
-				this.logs = this.data;
+			} catch (error) {
+				Utils.exeption(this, error, "Loading logs failed");
 			}
 		}
 	}
