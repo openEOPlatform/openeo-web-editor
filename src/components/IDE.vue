@@ -116,6 +116,7 @@ export default {
 		}
 	},
 	async mounted() {
+		this.initUserLocation();
 		this.listen('showDataForm', this.showDataForm);
 		this.listen('editProcess', this.editProcess);
 		this.listen('showLogin', this.login);
@@ -143,7 +144,7 @@ export default {
 		}
 	},
 	methods: {
-		...Utils.mapActions(['describeAccount']),
+		...Utils.mapActions(['describeAccount', 'initUserLocation']),
 		...Utils.mapMutations(['discoveryCompleted']),
 		...Utils.mapMutations('editor', ['setContext', 'setProcess', 'setCollectionPreview']),
 
@@ -286,7 +287,7 @@ export default {
 	}
 }
 #workspace {
-	min-width: 300px;
+	min-width: 400px;
 }
 #discovery {
 	height: 100%;
