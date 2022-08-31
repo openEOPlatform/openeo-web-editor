@@ -46,6 +46,7 @@ export default {
 		ProcessParameterModal: () => import('./components/modals/ProcessParameterModal.vue'),
 		ServerInfoModal: () => import('./components/modals/ServerInfoModal.vue'),
 		ServiceInfoModal: () => import('./components/modals/ServiceInfoModal.vue'),
+		ShareModal: () => import('./components/modals/ShareModal.vue'),
 		Tour: () => import('./components/Tour.vue'),
 		UdfRuntimeModal: () => import('./components/modals/UdfRuntimeModal.vue'),
 		WebEditorModal: () => import('./components/modals/WebEditorModal.vue')
@@ -320,7 +321,7 @@ h3.aboutPage {
 	margin-bottom: 0.5em;
 }
 
-.noDataMessage {
+.no-data, .log-empty {
 	text-align: center;
 	margin: 1em;
 	font-weight: bold;
