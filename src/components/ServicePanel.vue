@@ -1,7 +1,8 @@
 <template>
 	<DataTable ref="table" :data="data" :columns="columns" class="ServicePanel">
 		<template slot="toolbar">
-			<button title="Add new service" @click="createServiceFromScript()" v-show="supportsCreate" :disabled="!this.hasProcess"><i class="fas fa-plus"></i> Create</button>
+			<button title="Add new permanently stored web service" @click="createServiceFromScript()" v-show="supportsCreate" :disabled="!this.hasProcess"><i class="fas fa-plus"></i> Create</button>
+			<button title="Quickly show the process on map without storing it permanently" @click="quickViewServiceFromScript()" v-show="supportsQuickView" :disabled="!this.hasProcess"><i class="fas fa-map"></i> Show on Map</button>
 		</template>
 		<template #actions="p">
 			<button title="Details" @click="serviceInfo(p.row)" v-show="supportsRead"><i class="fas fa-info"></i></button>
@@ -16,10 +17,11 @@
 </template>
 
 <script>
-import EventBusMixin from './EventBusMixin.vue';
+import EventBusMixin from './EventBusMixin.js';
 import WorkPanelMixin from './WorkPanelMixin';
 import Utils from '../utils';
 import { Service } from '@openeo/js-client';
+import { mapMutations } from 'vuex';
 
 export default {
 	name: 'ServicePanel',
@@ -56,7 +58,8 @@ export default {
 					filterable: false,
 					sort: false
 				}
-			}
+			},
+			createdQuickViews: {}
 		};
 	},
 	computed: {
@@ -69,20 +72,51 @@ export default {
 		},
 		supportsDebug() {
 			return this.supports('debugService');
+		},
+		supportsQuickView() {
+			return this.supportsCreate && this.supportsDelete && this.mapService !== null;
+		},
+		mapService() {
+			for(let key in this.serviceTypes) {
+				if (!Utils.isMapServiceSupported(key)) {
+					continue;
+				}
+				let service = this.serviceTypes[key];
+				let hasRequiredParam = Object.values(service.configuration).some(param => param.required === true);
+				if (hasRequiredParam) {
+					continue;
+				}
+				return key;
+			}
+			return null;
 		}
 	},
 	mounted() {
 		this.listen('replaceProcess', this.replaceProcess);
+		this.beforeLogoutListener({key: this.$options.name, listener: this.onExit});
+	},
+	beforeDestroy() {
+		this.beforeLogoutListener({key: this.$options.name});
 	},
 	methods: {
+		...mapMutations(['beforeLogoutListener']),
+		async onExit() {
+			let promises = [];
+			for(let id in this.createdQuickViews) {
+				let service = this.createdQuickViews[id];
+				promises.push(this.deleteService(service, true));
+			}
+			await Promise.all(promises);
+			this.createdQuickViews = {};
+		},
 		isMapServiceSupported(type) {
 			return Utils.isMapServiceSupported(type);
 		},
 		showInEditor(service) {
-			this.refreshElement(service, updatedService => this.emit('editProcess', updatedService));
+			this.refreshElement(service, updatedService => this.broadcast('editProcess', updatedService));
 		},
 		showLogs(service) {
-			this.emit('viewLogs', service);
+			this.broadcast('viewLogs', service);
 		},
 		serviceCreated(service) {
 			var buttons = [];
@@ -185,13 +219,17 @@ export default {
 			}
 			return data;
 		},
-		async createService(script, data) {
+		async createService(script, data, quiet = false) {
 			data = this.normalizeToDefaultData(data);
 			try {
 				let service = await this.create({parameters: [script, data.type, data.title, data.description, data.enabled, data.configuration, data.plan, data.budget]});
-				this.serviceCreated(service);
+				if (!quiet) {
+					this.serviceCreated(service);
+				}
+				return service;
 			} catch(error) {
 				Utils.exception(this, error, 'Create Service Error: ' + (data.title || ''));
+				return null;
 			}
 		},
 		createServiceFromScript() {
@@ -204,7 +242,23 @@ export default {
 				this.supportsBilling ? this.getBudgetField() : null,
 				this.getConfigField()
 			];
-			this.emit('showDataForm', "Create new web service", fields, data => this.createService(this.process, data));
+			this.broadcast('showDataForm', "Create new web service", fields, data => this.createService(this.process, data));
+		},
+		async quickViewServiceFromScript() {
+			try {
+				let settings = {
+					title: 'Quick view',
+					type: this.mapService,
+					enabled: true
+				};
+				let service = await this.createService(this.process, settings, true);
+				if (service) {
+					this.createdQuickViews[service.id] = service;
+					this.viewService(service, () => this.deleteService(service, true));
+				}
+			} catch(error) {
+				Utils.exception(this, error, "Show on Map Error");
+			}
 		},
 		editMetadata(oldService) {
 			this.refreshElement(oldService, service => {
@@ -216,12 +270,12 @@ export default {
 					this.supportsBilling ? this.getBudgetField(service.budget) : null,
 					this.getConfigField(service.configuration)
 				];
-				this.emit('showDataForm', "Edit web service", fields, data => this.updateService(service, data));
+				this.broadcast('showDataForm', "Edit web service", fields, data => this.updateService(service, data));
 			});
 		},
 		serviceInfo(service) {
 			this.refreshElement(service, updatedService => {
-				this.emit('showModal', 'ServiceInfoModal', {service: updatedService.getAll()});
+				this.broadcast('showModal', 'ServiceInfoModal', {service: updatedService.getAll()});
 			});
 		},
 		replaceProcess(service, process) {
@@ -243,19 +297,25 @@ export default {
 				Utils.exception(this, error, "Update Service Error: " + Utils.getResourceTitle(service));
 			}
 		},
-		async deleteService(service) {
-			if (!confirm(`Do you really want to delete the service "${Utils.getResourceTitle(service)}"?`)) {
+		async deleteService(service, quiet = false) {
+			if (!quiet && !confirm(`Do you really want to delete the service "${Utils.getResourceTitle(service)}"?`)) {
 				return;
 			}
 			try {
 				await this.delete({data: service});
-				this.emit('removeWebService', service.id);
+				this.broadcast('removeWebService', service.id);
+				delete this.createdQuickViews[service.id];
 			} catch(error) {
-				Utils.exception(this, error, 'Delete Service Error: ' + Utils.getResourceTitle(service));
+				if (quiet) {
+					console.error(error);
+				}
+				else {
+					Utils.exception(this, error, 'Delete Service Error: ' + Utils.getResourceTitle(service));
+				}
 			}
 		},
-		viewService(service) {
-			this.emit('viewWebService', service);
+		viewService(service, onClose = null) {
+			this.broadcast('viewWebService', service, onClose);
 		},
 		async shareResults(service) {
 			if (this.canShare) {
@@ -264,7 +324,7 @@ export default {
 						Utils.error(this, "Sorry, only enabled services can be shared.");
 					}
 					else if (service2.url) {
-						this.emit('showModal', 'ShareModal', {url: service2.url, title: service2.title, context: service2});
+						this.broadcast('showModal', 'ShareModal', {url: service2.url, title: service2.title, context: service2});
 					}
 					else {
 						Utils.error(this, "Sorry, this service has no public URL.");

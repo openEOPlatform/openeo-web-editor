@@ -3,6 +3,7 @@
 		<Pane id="map">
 			<div :id="id" class="map-viewer">
 				<ProgressControl ref="progress" :map="map" />
+				<UserLocationControl :map="map" />
 				<TextControl v-if="isGeoTiff" :text="textControlText" />
 				<ChannelControl v-if="isGeoTiff && !colorMap" :bands="bands" @update="updateGeoTiffStyle" />
 				<div v-if="loading" class="map-loading">
@@ -231,7 +232,7 @@ export default {
 }
 </script>
 
-<style src="../maps/MapMixin.css"></style>
+<style src="../maps/MapMixin.scss" lang="scss"></style>
 
 <style lang="scss">
 .map-viewer {
@@ -255,14 +256,5 @@ export default {
 			font-size: 2em;
 		}
 	}
-}
-.ol-control.value {
-	top: 0.5em;
-	left: 3em;
-}
-.ol-control.ol-timeline .timeline-date-label {
-	width: 7em;
-    font-size: 0.8em;
-    font-weight: normal;
 }
 </style>

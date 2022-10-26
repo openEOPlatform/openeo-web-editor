@@ -1,6 +1,7 @@
 <template>
 	<div :id="id" class="geojson-map-editor">
 		<ProgressControl ref="progress" :map="map" />
+		<UserLocationControl :map="map" />
 	</div>
 </template>
 
@@ -153,7 +154,7 @@ export default {
 }
 </script>
 
-<style src="../maps/MapMixin.css"></style>
+<style src="../maps/MapMixin.scss" lang="scss"></style>
 
 <style lang="scss">
 .geojson-map-editor {

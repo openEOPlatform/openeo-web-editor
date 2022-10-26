@@ -1,6 +1,7 @@
 <template>
 	<div :id="id">
 		<ProgressControl ref="progress" :map="map" />
+		<UserLocationControl :map="map" />
 		<TextControl :text="help" :map="map" />
 	</div>
 </template>
@@ -147,4 +148,4 @@ export default {
 }
 </script>
 
-<style src="../maps/MapMixin.css"></style>
+<style src="../maps/MapMixin.scss" lang="scss"></style>

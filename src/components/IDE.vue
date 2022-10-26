@@ -43,7 +43,7 @@
 </template>
 
 <script>
-import EventBusMixin from './EventBusMixin.vue';
+import EventBusMixin from './EventBusMixin.js';
 import Utils from '../utils.js';
 import UserMenu from './UserMenu.vue';
 import UserWorkspace from './UserWorkspace.vue';
@@ -116,7 +116,6 @@ export default {
 		}
 	},
 	async mounted() {
-		this.initUserLocation();
 		this.listen('showDataForm', this.showDataForm);
 		this.listen('editProcess', this.editProcess);
 		this.listen('showLogin', this.login);
@@ -127,11 +126,11 @@ export default {
 		if (this.isAuthenticated) {
 			this.userInfoUpdater = setInterval(() => this.describeAccount().catch(error => console.error(error)), this.$config.dataRefreshInterval*60*1000); // Refresh user data every x minutes
 		}
-		this.emit('title', this.title);
+		this.broadcast('title', this.title);
 
 		if (this.collectionPreview) {
 			this.$nextTick(() => {
-				this.emit('showCollectionPreview', this.collectionPreview);
+				this.broadcast('showCollectionPreview', this.collectionPreview);
 				this.setCollectionPreview(null);
 			});
 		}
@@ -145,12 +144,12 @@ export default {
 		}
 	},
 	methods: {
-		...Utils.mapActions(['describeAccount', 'initUserLocation']),
+		...Utils.mapActions(['describeAccount']),
 		...Utils.mapMutations(['discoveryCompleted']),
 		...Utils.mapMutations('editor', ['setContext', 'setProcess', 'setCollectionPreview']),
 
 		resized(event) {
-			this.emit('windowResized', event);
+			this.broadcast('windowResized', event);
 		},
 		onViewerEmpty(empty) {
 			this.showViewer = !empty;
@@ -164,15 +163,15 @@ export default {
 			let events = {
 				save: this.updateEditor
 			};
-			this.emit('showModal', 'ImportProcessModal', {}, events);
+			this.broadcast('showModal', 'ImportProcessModal', {}, events);
 		},
 
 		saveProcess() {
-			this.emit('replaceProcess', this.context, this.process);
+			this.broadcast('replaceProcess', this.context, this.process);
 		},
 
 		async exportCode() {
-			this.emit('showModal', 'ExportCodeModal');
+			this.broadcast('showModal', 'ExportCodeModal');
 		},
 
 		async validateProcess() {
@@ -186,7 +185,7 @@ export default {
 				let errors = await this.connection.validateProcess(this.process);
 				if (errors.length > 0) {
 					errors.forEach(error => error.level = 'error');
-					this.emit('viewLogs', errors, 'Validation Result', 'fa-tasks');
+					this.broadcast('viewLogs', errors, 'Validation Result', 'fa-tasks');
 				}
 				else {
 					Utils.ok(this, "The process is valid");
@@ -197,10 +196,10 @@ export default {
 		},
 
 		updateEditor(value) {
-			this.setProcess(value);
 			if (value === null) {
 				this.setContext(null);
 			}
+			this.setProcess(value || null); // Convert an empty string to null
 		},
 
 		editProcess(obj) {
@@ -212,11 +211,11 @@ export default {
 		},
 
 		showServerInfo() {
-			this.emit('showModal', 'ServerInfoModal');
+			this.broadcast('showModal', 'ServerInfoModal');
 		},
 
 		showHelp() {
-			this.emit('showTour', 'ide');
+			this.broadcast('showTour', 'ide');
 		},
 
 		showDataForm(title, fields, saveCallback = null, closeCallback = null) {
@@ -244,7 +243,7 @@ export default {
 			if (typeof closeCallback === 'function') {
 				events.closed = closeCallback;
 			}
-			this.emit('showModal', 'ParameterModal', props, events);
+			this.broadcast('showModal', 'ParameterModal', props, events);
 		}
 
 	}

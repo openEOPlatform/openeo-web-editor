@@ -28,14 +28,18 @@
 			<div class="graphBuilder" @drop="onDrop" @dragover="allowDrop">
 				<div v-if="showHelpOverlay" class="model-overlay">
 					<h2>Welcome!</h2>
-					<p>What you are seeing in this area of the {{ $config.appName }} is the visual model builder.</p>
-					<p>You can start building your model by dragging collections, processes etc. from the left area and dropping them here.</p>
-					<p>Alternatively, you can also import existing processes into the model builder:</p>
-					<ul>
-						<li>Paste the JSON from your clipboard by clicking <button type="button" @click="paste" title="Paste from clipboard"><i class="fas fa-paste"></i></button> or use <kbd>CTRL</kbd> + <kbd>V</kbd> (Windows, Linux) or <kbd>⌘</kbd> + <kbd>V</kbd> (MacOS) when the model builder is in focus.</li>
-						<li>Drag and drop a JSON file from your computer</li>
-						<li>Import a JSON file from your computer or another source such as the internet by clicking <button type="button" @click="importProcess" title="Import process from external source"><i class="fas fa-cloud-download-alt"></i></button></li>
-					</ul>
+					<p>
+						What you are seeing in this area of the {{ $config.appName }} is the visual model builder.
+						You can start building your model by dragging collections, processes etc. from the left area and dropping them here.
+						</p>
+					<p>
+						Alternatively, you can also import existing processes into the model builder:
+						<ul>
+							<li v-if="canPaste">Paste the JSON from your clipboard by clicking <button type="button" @click="paste" title="Paste from clipboard"><i class="fas fa-paste"></i></button> or use <kbd>CTRL</kbd> + <kbd>V</kbd> (Windows, Linux) or <kbd>⌘</kbd> + <kbd>V</kbd> (MacOS) when the model builder is in focus.</li>
+							<li>Drag and drop a JSON file from your computer</li>
+							<li>Import a JSON file from your computer or another source such as the internet by clicking <button type="button" @click="importProcess" title="Import process from external source"><i class="fas fa-cloud-download-alt"></i></button></li>
+						</ul>
+					</p>
 					<p>
 						You can also import the processes from the Python and R client.
 						You need to export your process to JSON first:
@@ -59,9 +63,9 @@
 					:value="value"
 					@input="commit"
 					@error="errorHandler"
-					@showProcess="(id, namespace) => emit('showProcess', {id, namespace})"
-					@showCollection="id => emit('showCollection', id)"
-					@showParameter="param => emit('showProcessParameter', param)"
+					@showProcess="(id, namespace) => broadcast('showProcess', {id, namespace})"
+					@showCollection="id => broadcast('showCollection', id)"
+					@showParameter="param => broadcast('showProcessParameter', param)"
 					@editParameter="editParameter"
 					@editArguments="openArgumentEditor"
 					@compactMode="compact => this.compactMode = compact"
@@ -77,7 +81,7 @@
 import ModelBuilder from '@openeo/vue-components/components/ModelBuilder.vue';
 import Utils from '../utils.js';
 import DiscoveryToolbar from './DiscoveryToolbar.vue';
-import EventBusMixin from './EventBusMixin.vue';
+import EventBusMixin from './EventBusMixin.js';
 import FullscreenButton from './FullscreenButton.vue';
 import { ProcessParameter } from '@openeo/js-commons';
 import JavaScript from '../export/javascript';
@@ -134,6 +138,7 @@ export default {
 			showHelpOverlay: this.showIntro,
 			canUndo: false,
 			canRedo: false,
+			canPaste: false,
 			compactMode: false,
 			hasSelection: false,
 			formula: null,
@@ -163,6 +168,9 @@ export default {
 			}
 		}
 	},
+	mounted() {
+		this.canPaste = navigator && navigator.clipboard && typeof navigator.clipboard.readText === 'function';
+	},
 	methods: {
 		...Utils.mapMutations('editor', ['setInitialNode']),
 		commit(value) {
@@ -173,6 +181,9 @@ export default {
 			this.$emit('input', value);
 		},
 		async paste() {
+			if (!this.canPaste) {
+                Utils.error(this, 'error', 'Pasting is not supported by your browser.');
+			}
 			try {
 				const text = await navigator.clipboard.readText();
 				let process = JSON.parse(text);
@@ -182,7 +193,7 @@ export default {
 			}
 		},
 		importProcess() {
-			this.emit('importProcess');
+			this.broadcast('importProcess');
 		},
 		errorHandler(message, title = null) {
 			Utils.exception(this, message, title)
@@ -474,7 +485,7 @@ export default {
 					}
 				}
 			];
-			this.emit('showDataForm', "Edit Process", fields, async data => {
+			this.broadcast('showDataForm', "Edit Process", fields, async data => {
 				let newData = Utils.pickFromObject(data, ['id', 'summary', 'description', 'categories', 'experimental', 'deprecated', 'exception', 'examples', 'links']);
 				if (typeof newData.description === 'string' || Utils.isObject(newData.schema)) {
 					newData.returns = {
@@ -515,7 +526,7 @@ export default {
 				this.getDeprecatedField(),
 				this.getSchemaField()
 			];
-			this.emit('showDataForm', "Add Parameter", fields, async data => {
+			this.broadcast('showDataForm', "Add Parameter", fields, async data => {
 				if (typeof data.name === 'string' && data.name.length > 0) {
 					await this.$refs.blocks.addPgParameter(data);
 				}
@@ -531,7 +542,7 @@ export default {
 				this.getDeprecatedField(parameter.deprecated),
 				this.getSchemaField(parameter.schema)
 			];
-			this.emit('showDataForm', title, fields, saveCallback);
+			this.broadcast('showDataForm', title, fields, saveCallback);
 		},
 		showExpressionModal() {
 			let js = new JavaScript(this.value, this.processes, this.connection, true);
@@ -544,7 +555,7 @@ export default {
 				let events = {
 					save: this.insertNodes
 				};
-				this.emit('showModal', 'ExpressionModal', props, events);
+				this.broadcast('showModal', 'ExpressionModal', props, events);
 			} catch (error) {
 				Utils.exception(this, error);
 			}
@@ -580,7 +591,7 @@ export default {
 			if (typeof saveCallback === 'function') {
 				events.save = saveCallback;
 			}
-			this.emit('showModal', 'ParameterModal', props, events);
+			this.broadcast('showModal', 'ParameterModal', props, events);
 		},
 		confirmClear() {
 			var confirmed = confirm("Do you really want to clear the existing model?");
@@ -640,10 +651,27 @@ export default {
 		padding: 1em;
 		overflow: auto;
 		box-sizing: border-box;
-		line-height: 1.33em;
+		line-height: 1.25em;
 
-		> p:first-of-type {
-			margin-top: 0;
+		> h2 {
+			font-size: 1.2em;
+			text-align: center;
+			border-bottom: 0;
+			margin-bottom: 0.5em;
+			padding: 0;
+		}
+		> p {
+			margin: 0.5em 0;
+
+			> ul {
+				margin: 0.25em 0;
+			}
+			&:first-of-type {
+				margin-top: 0;
+			}
+			&:last-of-type {
+				margin-bottom: 0;
+			}
 		}
 	}
 
