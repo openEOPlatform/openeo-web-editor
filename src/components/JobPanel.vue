@@ -45,6 +45,8 @@ export default {
 	},
 	mounted() {
 		this.listen('replaceProcess', this.replaceProcess);
+		this.listen('executeProcess', this.executeProcess);
+		this.listen('startAndQueueProcess', this.startAndQueueProcess);
 	},
 	computed: {
 		...Utils.mapState(['connection']),
@@ -102,7 +104,6 @@ export default {
 		canShare() {
 			return Array.isArray(this.$config.supportedBatchJobSharingServices) && this.$config.supportedBatchJobSharingServices.length > 0;
 		}
-		
 	},
 	watch: {
 		data: {
@@ -139,6 +140,10 @@ export default {
 		showInEditor(job) {
 			this.refreshElement(job, updatedJob => this.broadcast('editProcess', updatedJob));
 		},
+		async startAndQueueProcess(options) {
+			let job = await this.createJob(this.process, options);
+			await this.queueJob(job);
+		},
 		async executeProcess() {
 			let abortController = new AbortController();
 			let snotifyConfig = {
@@ -160,9 +165,6 @@ export default {
 				let endlessPromise = () => new Promise(() => {}); // Pass a promise to snotify that never resolves as we manually close the toast
 				toast = this.$snotify.async(message, title, endlessPromise, snotifyConfig);
 				let result = await this.connection.computeResult(this.process, null, null, abortController);
-				if (result.logs.length > 0) {
-					this.broadcast('viewLogs', result.logs);
-				}
 				this.broadcast('viewSyncResult', result);
 			} catch(error) {
 				if (axios.isCancel(error)) {
@@ -260,8 +262,10 @@ export default {
 				data = this.normalizeToDefaultData(data);
 				let job = await this.create({parameters: [process, data.title, data.description, data.plan, data.budget]});
 				this.jobCreated(job);
+				return job;
 			} catch (error) {
 				Utils.exception(this, error, 'Create Job Error: ' + (data.title || ''));
+				return null;
 			}
 		},
 		createJobFromScript() {
