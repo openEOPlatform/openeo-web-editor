@@ -7,17 +7,25 @@
 </template>
 
 <script>
-import MapMixin from '../maps/MapMixin.vue';
+import GeoJsonMixin from './ExtentMixin.vue';
+import GeocoderMixin from './GeocoderMixin.vue';
+import MapMixin from './MapMixin.vue';
 import Utils from '../../utils.js';
 import ExtentInteraction from 'ol/interaction/Extent';
 import { transformExtent } from 'ol/proj';
 import { containsXY } from 'ol/extent';
-import { createDefaultStyle } from 'ol/style/Style';
-import TextControl from '../maps/TextControl.vue';
+import Style, { createDefaultStyle } from 'ol/style/Style';
+import TextControl from './TextControl.vue';
+import Stroke from 'ol/style/Stroke';
+import Fill from 'ol/style/Fill';
 
 export default {
 	name: 'MapAreaSelect',
-	mixins: [MapMixin],
+	mixins: [
+		GeoJsonMixin,
+		GeocoderMixin,
+		MapMixin
+	],
 	components: {
 		TextControl
 	},
@@ -28,20 +36,16 @@ export default {
 		value: {
 			type: [Object, Array],
 			default: () => null
+		},
+		showMaxExtent: {
+			type: [Object, Array],
+			default: () => null
 		}
 	},
 	data() {
-		let extent = null;
-		if (Utils.isObject(this.value) && "west" in this.value && "south" in this.value && "east" in this.value && "north" in this.value) {
-			extent = [this.value.west, this.value.south, this.value.east, this.value.north];
-		}
-		else if (Array.isArray(this.value) && value.length >= 4) {
-			extent = this.value;
-		}
-
 		return {
 			interaction: null,
-			extent
+			extent: this.toExtent(this.value)
 		};
 	},
 	computed: {
@@ -53,6 +57,31 @@ export default {
 				return transformExtent(this.extent, 'EPSG:4326', this.map.getView().getProjection());
 			}
 			return null;
+		},
+		outerArea() {
+			if (!this.showMaxExtent) {
+				return null;
+			}
+			let {west, east, north, south} = this.showMaxExtent;
+			return {
+				"type": "Polygon",
+				"coordinates": [
+					[
+						[-180, 90],
+						[-180, -90],
+						[180, -90],
+						[180, 90],
+						[-180, 90]
+					],
+					[
+						[west, north],
+						[west, south],
+						[east, south],
+						[east, north],
+						[west, north]
+					]
+				]
+			};
 		},
 		bbox() {
 			return Utils.extentToBBox(this.extent);
@@ -71,22 +100,31 @@ export default {
 			}
 			this.$emit('input', this.returnAsObject ? this.bbox : this.extent);
 		},
-		ensureValidExtent(extent) {
-			if (!extent) {
-				return extent;
-			}
-			return [
-				Math.max(extent[0], -180),
-				Math.max(extent[1], -90),
-				Math.min(extent[2], 180),
-				Math.min(extent[3], 90)
-			];
-		},
 		async renderMap() {
 			let isWebMercatorCompatible = Utils.isBboxInWebMercator(this.bbox) !== false;
 			
 			await this.createMap(isWebMercatorCompatible ? 'EPSG:3857' : 'EPSG:4326');
 			this.addBasemaps();
+			this.addGeocoder(bbox => {
+				if (!bbox) {
+					return;
+				}
+				let extent = this.toExtent(bbox);
+				extent = transformExtent(extent, 'EPSG:4326', this.map.getView().getProjection());
+				this.interaction.setExtent(extent);
+				this.fitMap();
+			});
+			if (this.showMaxExtent) {
+				const style = new Style({
+					fill: new Fill({ color: '#00000099' }),
+					stroke: new Stroke({ width: 0, color: '#00000000' })
+				});
+				this.addGeoJson(this.outerArea, false, "unsupported area", style);
+
+				let extent = this.toExtent(this.showMaxExtent);
+				extent = transformExtent(extent, 'EPSG:4326', this.map.getView().getProjection());
+				this.map.getView().fit(extent, this.getFitOptions(1));
+			}
 
 			let condition = (event) => {
 				if (!this.editable) {
@@ -129,14 +167,14 @@ export default {
 				pixelTolerance: 15
 			});
 
-			// let oldImplementation = this.interaction.setExtent.bind(this.interaction);
-			// this.interaction.setExtent = extent => oldImplementation(this.ensureValidExtent(extent));
 			if (this.editable) {
 				this.interaction.on('extentchanged', this.update);
 			}
 
 			this.map.addInteraction(this.interaction);
-
+			this.fitMap();
+		},
+		fitMap() {
 			// If not ediable, make a bigger extent visible so that user can get a better overview
 			if (this.projectedExtent) {
 				var fitOptions = this.getFitOptions(this.editable ? 10 : 33);
