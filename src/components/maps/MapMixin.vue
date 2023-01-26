@@ -231,15 +231,10 @@ export default {
 
 		trackTileProgress(source) {
 			if (this.$refs.progress) {
-				source.on('tileloadstart', () => {
-					this.$refs.progress.addLoading();
-				});
-				source.on('tileloadend', () => {
-					this.$refs.progress.addLoaded();
-				});
-				source.on('tileloaderror', () => {
-					this.$refs.progress.addLoaded();
-				});
+				source.on('tileloadstart', () => this.$refs.progress && this.$refs.progress.addLoading());
+				let loadedFn = () => this.$refs.progress && this.$refs.progress.addLoaded();
+				source.on('tileloadend', loadedFn);
+				source.on('tileloaderror', loadedFn);
 			}
 			return source;
 		},

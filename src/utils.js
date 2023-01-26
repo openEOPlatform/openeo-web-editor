@@ -403,12 +403,16 @@ class Utils extends VueUtils {
 		};
 		return resolver(schema);
 	}
+	static extractUDPParams(process) {
+		let [id, ...namespace] = process.split('@');
+		return [id, namespace.join('@')];
+	}
 
 };
 
-export default Object.assign(Utils, {
-	mapState,
-	mapGetters,
-	mapMutations,
-	mapActions
-});
+Utils.mapState = mapState;
+Utils.mapGetters = mapGetters;
+Utils.mapMutations = mapMutations;
+Utils.mapActions = mapActions;
+
+export default Utils;
