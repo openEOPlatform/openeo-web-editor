@@ -49,6 +49,7 @@ export default {
 
 	// List of supported batch job sharing services
 	supportedBatchJobSharingServices: [
+		'ShareEditor',
 		'CopyUrl',
 		'TwitterShare'
 	],
@@ -102,6 +103,9 @@ export default {
 			maxZoom: 22
 		}
 	],
+
+	// Import processes from openeo-community-examples repo
+	importCommunityExamples: true,
 
 	// Additional process namespaces to load by default
 	processNamespaces: [],
