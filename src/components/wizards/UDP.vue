@@ -38,7 +38,7 @@ export default {
 			noProcessSelection: false,
 			process: null,
 			processSpec: null,
-			processNamespace: 'user',
+			processNamespace: null,
 			args: {},
 			jobTitle: "",
 			mode: "",
