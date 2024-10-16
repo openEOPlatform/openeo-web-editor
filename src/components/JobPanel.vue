@@ -26,21 +26,27 @@ import EventBusMixin from './EventBusMixin';
 import WorkPanelMixin from './WorkPanelMixin';
 import SyncButton from './SyncButton.vue';
 import Utils from '../utils.js';
-import { AbortController, Job } from '@openeo/js-client';
+import { Job } from '@openeo/js-client';
+import { cancellableRequest, showCancellableRequestError, CancellableRequestError } from './cancellableRequest';
+import FieldMixin from './FieldMixin';
+import StacMigrate from '@radiantearth/stac-migrate';
 
 const WorkPanelMixinInstance = WorkPanelMixin('jobs', 'batch job', 'batch jobs');
 
 export default {
 	name: 'JobPanel',
-	mixins: [WorkPanelMixinInstance, EventBusMixin],
+	mixins: [
+		WorkPanelMixinInstance,
+		EventBusMixin,
+		FieldMixin
+	],
 	components: {
 		SyncButton
 	},
 	data() {
 		return {
 			watchers: {},
-			jobUpdater: null,
-			runId: 0
+			jobUpdater: null
 		};
 	},
 	mounted() {
@@ -145,48 +151,20 @@ export default {
 			await this.queueJob(job);
 		},
 		async executeProcess() {
-			let abortController = new AbortController();
-			let snotifyConfig = {
-				timeout: 0,
-				type: 'async',
-				buttons: [{
-					text: 'Cancel',
-					action: toast => {
-						abortController.abort();
-						this.$snotify.remove(toast.id, true);
-					}
-				}]
-			};
-			let toast;
-			try {
-				this.runId++;
-				let message = "A process is currently executed synchronously...";
-				let title = `Run #${this.runId}`;
-				let endlessPromise = () => new Promise(() => {}); // Pass a promise to snotify that never resolves as we manually close the toast
-				toast = this.$snotify.async(message, title, endlessPromise, snotifyConfig);
-				let result = await this.connection.computeResult(this.process, null, null, abortController);
+			const callback = async (abortController) => {
+				const result = await this.connection.computeResult(this.process, null, null, abortController);
 				this.broadcast('viewSyncResult', result);
-			} catch(error) {
-				if (axios.isCancel(error)) {
-					// Do nothing, we expected the cancellation
-				}
-				else if (typeof error.message === 'string' && Utils.isObject(error.response) && [400,500].includes(error.response.status)) {
-					this.broadcast('viewLogs', [{
-						id: error.id,
-						code: error.code,
-						level: 'error',
-						message: error.message,
-						links: error.links || []
-					}]);
-					Utils.error(this, "Synchronous processing failed. Please see the logs for details.", "Processing Error");
+			};
+			try {
+				await cancellableRequest(this, callback, 'Run');
+			} catch (error) {
+				if (error instanceof CancellableRequestError) {
+					showCancellableRequestError(this, error);
 				}
 				else {
-					Utils.exception(this, error, "Server Error");
+					Utils.exception(this, error);
 				}
-			} finally {
-				if (toast) {
-					this.$snotify.remove(toast.id, true);
-				}
+
 			}
 		},
 		jobCreated(job) {
@@ -201,46 +179,6 @@ export default {
 				buttons.push({text: 'Delete', action: () => this.deleteJob(job)});
 			}
 			Utils.confirm(this, 'Job "' + Utils.getResourceTitle(job) + '" created!', buttons);
-		},
-		getTitleField(value = null) {
-			return {
-				name: 'title',
-				label: 'Title',
-				schema: {type: 'string'},
-				default: null,
-				value: value,
-				optional: true
-			};
-		},
-		getDescriptionField(value = null) {
-			return {
-				name: 'description',
-				label: 'Description',
-				schema: {type: 'string', subtype: 'commonmark'},
-				default: null,
-				value: value,
-				description: 'CommonMark (Markdown) is allowed.',
-				optional: true
-			};
-		},
-		getBillingPlanField(value = undefined) {
-			return {
-				name: 'plan',
-				label: 'Billing plan',
-				schema: {type: 'string', subtype: 'billing-plan'},
-				value: value,
-				optional: true
-			};
-		},
-		getBudgetField(value = null) {
-			return {
-				name: 'budget',
-				label: 'Budget limit',
-				schema: {type: 'number', subtype: 'budget'},
-				default: null,
-				value: value,
-				optional: true
-			};
 		},
 		normalizeToDefaultData(data) {
 			if (typeof data.title !== 'undefined' && (typeof data.title !== 'string' || data.title.length === 0)) {
@@ -260,7 +198,14 @@ export default {
 		async createJob(process, data) {
 			try {
 				data = this.normalizeToDefaultData(data);
-				let job = await this.create({parameters: [process, data.title, data.description, data.plan, data.budget]});
+				let job = await this.create([
+					process,
+					data.title,
+					data.description,
+					data.plan,
+					data.budget,
+					{log_level: data.log_level}
+				]);
 				this.jobCreated(job);
 				return job;
 			} catch (error) {
@@ -272,6 +217,7 @@ export default {
 			var fields = [
 				this.getTitleField(),
 				this.getDescriptionField(),
+				this.getLogLevelField(),
 				this.supportsBillingPlans ? this.getBillingPlanField() : null,
 				this.supportsBilling ? this.getBudgetField() : null
 			];
@@ -316,6 +262,7 @@ export default {
 				if (updatedJob.status === 'finished') {
 					try {
 						result = await updatedJob.getResultsAsStac();
+						result = StacMigrate.stac(result, false);
 					} catch (error) {
 						Utils.exception(this, error, "Load Results Error: " + Utils.getResourceTitle(updatedJob));
 					}
@@ -350,6 +297,7 @@ export default {
 				var fields = [
 					this.getTitleField(job.title),
 					this.getDescriptionField(job.description),
+					this.getLogLevelField(job.log_level),
 					this.supportsBillingPlans ? this.getBillingPlanField(job.plan) : null,
 					this.supportsBilling ? this.getBudgetField(job.budget) : null
 				];
@@ -396,6 +344,7 @@ export default {
 			// Doesn't need to go through job store as it doesn't change job-related data
 			try {
 				let stac = await job.getResultsAsStac();
+				stac = StacMigrate.stac(stac, false);
 				this.broadcast('viewJobResults', stac, job);
 			} catch(error) {
 				Utils.exception(this, error, 'View Result Error: ' + Utils.getResourceTitle(job));
@@ -405,6 +354,7 @@ export default {
 			// Doesn't need to go through job store as it doesn't change job-related data
 			try {
 				let result = await job.getResultsAsStac();
+				result = StacMigrate.stac(result, false);
 				if(Utils.size(result.assets) == 0) {
 					Utils.error(this, 'No results available for job "' + Utils.getResourceTitle(job) + '".');
 					return;
@@ -417,6 +367,7 @@ export default {
 		async shareResults(job) {
 			if (this.canShare) {
 				let result = await job.getResultsAsStac();
+				result = StacMigrate.stac(result, false);
 				let url;
 				let link;
 				if (Array.isArray(result.links)) {
