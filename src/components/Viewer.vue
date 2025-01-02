@@ -1,11 +1,11 @@
 <template>
 	<div class="viewerContainer" @drop="onDrop" @dragover="allowDrop">
-		<Tabs id="viewerTabs" ref="tabs" @empty="onTabsEmpty" allowTabRename>
+		<Tabs id="viewerTabs" ref="tabs" @empty="onTabsEmpty" :allowTabRename="editable">
 			<template #empty>Nothing to show right now...</template>
 			<template #dynamic="{ tab }">
 				<LogViewer v-if="logViewerIcons.includes(tab.icon)" :data="tab.data" @mounted="onMounted" @options="onOptionsChanged" />
 				<component v-else-if="tab.data.component" :is="tab.data.component" v-on="tab.data.events" v-bind="tab.data.props" @mounted="onMounted" @options="onOptionsChanged" /> <!-- for file formats -->
-				<MetadataViewer v-if="tab.icon === 'fa-info'" :data="tab.data" @mounted="onMounted" @options="onOptionsChanged" /> <!-- for STAC metadata -->
+				<MetadataViewer v-else-if="tab.icon === 'fa-info'" :data="tab.data" @mounted="onMounted" @options="onOptionsChanged" /> <!-- for STAC metadata -->
 				<MapViewer v-else-if="tab.icon === 'fa-map'" :data="tab.data" :removableLayers="isCollectionPreview(tab.data)" @mounted="onMounted" @options="onOptionsChanged" /> <!-- for services -->
 				<div class="unsupported" v-else>
 					Sorry, the viewer doesn't support showing this type of data.
@@ -63,6 +63,12 @@ export default {
 				'fa-tasks'
 			],
 			options: null
+		}
+	},
+	props: {
+		editable: {
+			type: Boolean,
+			default: true
 		}
 	},
 	computed: {
@@ -152,7 +158,7 @@ export default {
 			}
 
 			this.$refs.tabs.addTab(
-				title, faIcon, resource, id, selectTab, true,
+				title, faIcon, resource, id, selectTab, this.editable,
 				tab => this.onShow(tab),
 				tab => this.onHide(tab)
 			);
@@ -204,7 +210,7 @@ export default {
 				Utils.error(this, 'No results available for "' + title + '".');
 				return;
 			}
-			else if (files.length > 5 &&  !Utils.confirmOpenAll(files)) {
+			else if (files.length > 5 && !Utils.confirmOpenAll(files)) {
 				return;
 			}
 			if (showMetadata) {
@@ -231,7 +237,7 @@ export default {
 				}
 			}
 			this.$refs.tabs.addTab(
-				title, "fa-map", resource, id, true, true,
+				title, "fa-map", resource, id, true, this.editable,
 				tab => this.onShow(tab),
 				tab => this.onHide(tab),
 				onClose
@@ -246,7 +252,7 @@ export default {
 				this.tabIdCounter++;
 			}
 			this.$refs.tabs.addTab(
-				title, "fa-info", resource, id, true, true,
+				title, "fa-info", resource, id, true, this.editable,
 				tab => this.onShow(tab),
 				tab => this.onHide(tab)
 			);
@@ -321,7 +327,7 @@ export default {
 					}
 					await file.loadData(this.connection);
 					this.$refs.tabs.addTab(
-						title, file.icon, file, tabId, true, true,
+						title, file.icon, file, tabId, true, this.editable,
 						tab => this.onShow(tab),
 						tab => this.onHide(tab)
 					);

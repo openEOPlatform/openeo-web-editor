@@ -93,7 +93,42 @@ export default {
 			if (item.namespace) {
 				this.processNamespace = item.namespace;
 			}
-			this.parent.nextTab();
+			else {
+				this.process = item.id;
+				if (item.namespace) {
+					this.processNamespace = item.namespace;
+				}
+				this.parent.nextTab();
+			}
+		},
+		async loadFromUrl(url) {
+			if (!Utils.isUrl(url)) {
+				throw new Error('Please provide a valid URL!');
+			}
+			let data;
+			try {
+				const response = await Utils.axios().get(url);
+				data = response.data;
+			} catch(error) {
+				throw new Error('Failed to load process from the given URL');
+			}
+			if (typeof data === 'string') {
+				try {
+					data = JSON.parse(data);
+				} catch(error) {
+					throw new Error('Process is not valid JSON');
+				}
+			}
+			if (!Utils.isObject(data)) {
+				throw new Error('Process does not contain any data');
+			}
+			if (!Utils.hasText(data.id)) {
+				throw new Error('Process does not contain an id');
+			}
+			if (!Utils.isObject(data.process_graph)) {
+				throw new Error('Process does not contain a process graph');
+			}
+			return data;
 		},
 		async checkProcessRequirements() {
 			this.loading = true;

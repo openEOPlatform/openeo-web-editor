@@ -44,6 +44,12 @@ const getDefaultState = () => {
 		processesUpdated: 0,
 		collections: [],
 		processNamespaces: Config.processNamespaces || [],
+		pageLimit: Config.pageLimit,
+		federationMissing: {
+			collections: [],
+			processes: [],
+			fileFormats: [],
+		},
 	};
 };
 
@@ -66,6 +72,7 @@ export default new Vuex.Store({
 			return null;
 		},
 		capabilities: (state) => state.connection !== null ? state.connection.capabilities() : null,
+
 		supports: (state) => (feature) => state.connection !== null && state.connection.capabilities() !== null && state.connection.capabilities().hasFeature(feature),
 		currency: (state) => {
 			let currency = '';
@@ -73,6 +80,18 @@ export default new Vuex.Store({
 				currency = state.connection.capabilities().currency();
 			}
 			return currency;
+		},
+		federation: (state) => {
+			if (!state.connection) {
+				return null;
+			}
+			const federation = state.connection.capabilities().listFederation();
+			if (federation.length === 0) {
+				return null;
+			}
+			// convert array of objects, which each have an `id` property, into an object with those IDs as the keys
+			// e.g. [ {id:'f',name:'foo'} ] -> { 'f': {id:'f',name:'foo'} }
+			return federation.reduce((arr, val) => ({ ...arr, [val.id]: val }), {})
 		},
 		isConnected: (state) => state.connection !== null && state.connection.capabilities() !== null,
 		isDiscovered: (state) => state.connection !== null && state.discoveryCompleted,
@@ -187,6 +206,7 @@ export default new Vuex.Store({
 				// Request processes
 				if (capabilities.hasFeature('listProcesses')) {
 					promises.push(cx.state.connection.listProcesses()
+						.then(data => cx.state.federationMissing.processes = data['federation:missing'])
 						.catch(error => errors.push(error)));
 				}
 				else {
@@ -343,6 +363,7 @@ export default new Vuex.Store({
 		},
 		fileFormats(state, fileFormats) {
 			state.fileFormats = fileFormats;
+			state.federationMissing.fileFormats = fileFormats['federation:missing'];
 		},
 		serviceTypes(state, serviceTypes) {
 			// Make keys uppercase for simplicity
@@ -389,6 +410,7 @@ export default new Vuex.Store({
 				.map(c => StacMigrate.collection(c, false))
 				.filter(c => (typeof c.id === 'string'))
 				.sort(Utils.sortById);
+			state.federationMissing.collections = data['federation:missing'];
 		},
 		setConnectionError(state, error) {
 			state.connectionError = error;
@@ -417,6 +439,9 @@ export default new Vuex.Store({
 			else {
 				Vue.delete(state.beforeLogoutListener, key);
 			}
+		},
+		federationMissing(state, federationMissing) {
+			state.federationMissing = federationMissing;
 		}
 	}
 });
