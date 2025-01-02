@@ -10,7 +10,7 @@
 				<MapExtentViewer class="jobMap" :footprint="p.geometry || p.bbox"></MapExtentViewer>
 			</template>
 		</Item>
-		<ul class="list">
+		<ul v-else class="list">
 			<StacAsset v-for="(asset, id) in data.assets" :key="id" :asset="asset" :id="id" :context="data" />
 		</ul>
 	</div>
